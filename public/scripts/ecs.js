@@ -7,8 +7,9 @@ class System {
         this.getEntity = (i) => {
             return this.entities[i];
         }
-        this.removeEntity = (i) => {
-            this.entities.splice(i, 1);
+        this.removeEntity = (ent) => {
+            let index = this.entities.indexOf(ent);
+            this.entities.splice(index, 1);
         }
         this.update = () => {
             for (let ent of this.entities) {
@@ -20,7 +21,9 @@ class System {
 
 class Entity {
     constructor(transform, system) {
+        this.id = system.entities.length;
         system.addEntity(this);
+        this.forwardVector = [0, 0, 0];
         this.transform = transform;
         this.positions = [];
         this.components = {};
@@ -28,6 +31,10 @@ class Entity {
         this.canCollide = true;
         this.texCoord = 0;
         this.color = [0, 0, 0, 0];
+        this.normalizedScale = [0, 0];
+        this.destroy = () => {
+            this.system.removeEntity(this);
+        }
         this.update = () => {
             for (let name of Object.keys(this.components)) {
                 this.components[name].update(this);
@@ -79,40 +86,103 @@ class Component {
 }
 class Script {
     #entity;
+    #run;
     constructor(entity) {
         this.#entity = entity;
-        this.run = () => { };
+        this.#run = () => { };
+        this.globals = { x: 0 };
     }
-    getSprite() {
-        return this.#entity.getComponent('sprite');
+    set onStart(start = () => { }) {
+        if (typeof start !== 'function')
+            throw Error('onStart variable is not a function!');
+        else {
+            start();
+        }
     }
-    getTransform() {
+    set onUpdate(update = () => { }) {
+        if (typeof update !== 'function')
+            throw Error('onUpdate variable is not a function!');
+        else
+            setInterval(() => {
+                if (playing)
+                    update();
+            }, 1);
+    }
+    set onMouseDown(click = () => { }) {
+        if (typeof click !== 'function')
+            throw Error('onClick variable is not a function!');
+        else
+            window.addEventListener('mousedown', () => {
+                if (playing)
+                    click();
+            });
+    }
+    set onMouseUp(click = () => { }) {
+        if (typeof click !== 'function')
+            throw Error('onClick variable is not a function!');
+        else
+            window.addEventListener('mouseup', () => {
+                if (playing)
+                    click();
+            });
+    }
+    set onClick(click = () => { }) {
+        if (typeof click !== 'function')
+            throw Error('onClick variable is not a function!');
+        else
+            window.addEventListener('click', () => {
+                if (playing)
+                    click();
+            });
+    }
+    get getSpriteData() {
+        if (!this.#entity.getComponent('sprite'))
+            throw Error('Entity does not have a sprite');
+        return {
+            getState: this.#entity.getComponent('sprite').getState,
+            getSpeed: this.#entity.getComponent('sprite').speed,
+        }
+    }
+    get getPressedKeys() {
+        return ui.pressedKeys;
+    }
+    set setSpriteSpeed(setter) {
+        if (!this.#entity.getComponent('sprite'))
+            throw Error('Entity does not have a sprite');
+        else
+            this.#entity.getComponent('sprite').speed = setter;
+    }
+    get spawnObject() {
+        return new GameObject(new Transform(), this.#entity.system, 'SpawnedObject');
+    }
+
+    set setSpriteState(setter) {
+        if (!this.#entity.getComponent('sprite'))
+            throw Error('Entity does not have a sprite');
+        else
+            this.#entity.getComponent('sprite').setState(setter);
+    }
+    //temporary
+    get getTransform() {
         return this.#entity.getComponent('transform');
     }
-    getTexture() {
+    //temporary
+    get getTexture() {
         return this.#entity.getComponent('texture');
-    }
-    /**
-     * @param  {function} func
-     */
-    onClick(func) {
-        window.addEventListener('click', () => {
-            func();
-        });
     }
 }
 class SpriteComponent extends Component {
     constructor(name, entity, sheeturl, jsonurl) {
         super(name, entity);
         this.animations = [];
-        this.state = 1;
+        this.state = 0;
         this.index = 0;
-        this.speed = .1;
+        this.speed = .05;
         this.image = undefined;
         this.entity.draw = (gl, images, pos, info) => { this.animate(gl, images, pos, info); }
         this.setAnimations(sheeturl, jsonurl);
     }
-    getState() {
+    get getState() {
         return this.state;
     }
     setState(num) {
@@ -200,27 +270,29 @@ class ColliderComponent extends Component {
     constructor(name, entity) {
         super(name, entity);
         this.isColliding = false;
+        this.colliding = undefined;
         this.update = () => {
             for (let ent of this.entity.system.entities) {
                 if (ent != this.entity) {
-                    let lowX = (ent.transform.getX() - (ent.transform.getScale()[0] / 2));
-                    let highX = (ent.transform.getX() + (ent.transform.getScale()[0] / 2));
-                    let lowY = (ent.transform.getY() - (ent.transform.getScale()[1] / 2));
-                    let highY = (ent.transform.getY() + (ent.transform.getScale()[1] / 2));
-                    let lowX2 = ((this.entity.transform.getX() + this.entity.forwardVector[0]) - (this.entity.transform.getScale()[0] / 2));
-                    let highX2 = ((this.entity.transform.getX() + this.entity.forwardVector[0]) + (this.entity.transform.getScale()[0] / 2));
-                    let lowY2 = ((this.entity.transform.getY() + this.entity.forwardVector[1]) - (this.entity.transform.getScale()[1] / 2));
-                    let highY2 = ((this.entity.transform.getY() + this.entity.forwardVector[1]) + (this.entity.transform.getScale()[1] / 2));
+                    let entScale = ent.transform.getActualScale();
+                    let thisEntScale = this.entity.transform.getActualScale();
+                    let lowX = (ent.transform.getX() - Math.abs(entScale[0] / 2));
+                    let highX = (ent.transform.getX() + Math.abs(entScale[0] / 2));
+                    let lowY = (ent.transform.getY() - Math.abs(entScale[1] / 2));
+                    let highY = (ent.transform.getY() + Math.abs(entScale[1] / 2));
+                    let lowX2 = ((this.entity.transform.getX() + this.entity.forwardVector[0]) - Math.abs(thisEntScale[0] / 2));
+                    let highX2 = ((this.entity.transform.getX() + this.entity.forwardVector[0]) + Math.abs(thisEntScale[0] / 2));
+                    let lowY2 = ((this.entity.transform.getY() + this.entity.forwardVector[1]) - Math.abs(thisEntScale[1] / 2));
+                    let highY2 = ((this.entity.transform.getY() + this.entity.forwardVector[1]) + Math.abs(thisEntScale[1] / 2));
                     if ((highX2 > lowX && lowX2 < highX) | (lowX2 < highX && highX2 > lowX)) {
-                        if ((highY2 > lowY && lowY2 < highY) | (lowY2 < highY && lowY2 > lowY)) {
-                            this.isColliding = true;
-                            break;
-                        } else {
-                            this.isColliding = false;
-                        }
-                    } else {
-                        this.isColliding = false;
-                    }
+                        if ((highY2 > lowY && lowY2 < highY) | (lowY2 < highY && lowY2 > lowY) && (this.entity.transform.getZ() === ent.transform.getZ())) {
+                            if (!this.isColliding) {
+                                this.colliding = ent;
+                                this.isColliding = true;
+                                break;
+                            }
+                        } else this.isColliding = false;
+                    } else this.isColliding = false;
                 }
             }
         };
@@ -230,53 +302,82 @@ class ColliderComponent extends Component {
 class TransformComponent extends Component {
     constructor(name, entity) {
         super(name, entity);
-        this.x = 0.0;
-        this.y = 0.0;
-        this.z = 0.0;
-        this.r = 0.0;
-        this.s = [1.0, 1.0, 1.0];
-        this.setX = (x) => { this.x = x; };
-        this.setY = (y) => { this.y = y; };
-        this.setZ = (z) => { this.z = z; };
-        this.setRotation = (degrees) => { this.r = degrees; };
-        this.setScale = (vec3f) => { this.s = vec3f; };
-        this.setScaleX = (x) => { this.s[0] = parseFloat(x); };
-        this.setScaleY = (y) => { this.s[1] = parseFloat(y); };
-        this.setScaleZ = (z) => { this.s[2] = parseFloat(z); };
-        this.getX = () => { return parseFloat(this.x); };
-        this.getY = () => { return parseFloat(this.y); };
-        this.getZ = () => { return parseFloat(this.z); };
-        this.getRotation = () => { return this.r; };
-        this.getScale = () => { return this.s; };
-        this.getScaleX = () => { return this.s[0]; };
-        this.getScaleY = () => { return this.s[1]; };
-        this.getScaleZ = () => { return this.s[2]; };
-        this.update = () => {
-            this.entity.transform.setX(this.x);
-            this.entity.transform.setY(this.y);
-            this.entity.transform.setZ(this.z);
-            this.entity.transform.setRotation(this.r);
-            this.entity.transform.setScale(this.s);
-        }
+        this.setX = (x) => { this.entity.transform.setX(x) };
+        this.setY = (y) => { this.entity.transform.setY(y) };
+        this.setZ = (z) => { this.entity.transform.setZ(z) };
+        this.setTransform = (xyz) => { this.entity.transform.setTransform(xyz); }
+        this.setNormalizedScale = (normal) => { this.entity.transform.setDefaultScale(normal) }
+        this.setRotation = (degrees) => { this.entity.transform.setRotation(degrees) };
+        this.setScale = (vec3f) => { this.entity.transform.setScale(vec3f) };
+        this.setScaleX = (x) => { this.entity.transform.setScaleX(parseFloat(x)) };
+        this.setScaleY = (y) => { this.entity.transform.setScaleY(parseFloat(y)) };
+        this.setScaleZ = (z) => { this.entity.transform.setScaleZ(parseFloat(z)) };
+        this.getX = () => { return parseFloat(this.entity.transform.getX()); };
+        this.getY = () => { return parseFloat(this.entity.transform.getY()); };
+        this.getZ = () => { return parseFloat(this.entity.transform.getZ()); };
+        this.getRotation = () => { return this.entity.transform.getRotation(); };
+        this.getScale = () => { return this.entity.transform.getScale(); };
+        this.getScaleX = () => { return this.entity.transform.getScale()[0]; };
+        this.getScaleY = () => { return this.entity.transform.getScale()[1]; };
+        this.getScaleZ = () => { return this.entity.transform.getScale()[2]; };
     }
 }
 class CameraComponent extends Component {
-    constructor(name, entity) {
+    constructor(name, entity, ui) {
         super(name, entity);
+        this.camera = {
+            x: 0,
+            y: 0,
+            z: 10,
+            pitch: 0,
+            yaw: 0,
+            roll: 0,
+            speed: 1,
+            scrollSpeed: .6,
+        };
+        this.active = false;
+        this.move = () => {
+            const pitch = (this.camera.pitch * Math.PI / 180);
+            const yaw = (this.camera.yaw * Math.PI / 180);
+            const forward = [Math.cos(pitch) * -Math.sin(yaw), Math.sin(pitch), Math.cos(pitch) * -Math.cos(yaw)];
+            const right = crossVec3(forward, [0, -1, 0]);
+            let speed = this.camera.speed / 100;
+            if (ui.pressedKeys['ShiftLeft']) {
+                speed += speed;
+            }
+            if (ui.pressedKeys['KeyA'] | ui.pressedKeys['KeyD']) {
+                let direction = ui.pressedKeys['KeyA'] ? 1 : -1;
+                this.entity.forwardVector[0] = speed * right[0] * direction;
+                this.entity.forwardVector[2] = speed * right[2] * direction;
+                if (!ui.pressedKeys['KeyW'] && !ui.pressedKeys['KeyS'])
+                    this.entity.forwardVector[1] = 0;
+                this.camera.x += this.entity.forwardVector[0];
+            }
+            if (ui.pressedKeys['KeyW'] | ui.pressedKeys['KeyS']) {
+                let direction = ui.pressedKeys['KeyW'] ? 1 : -1;
+                this.entity.forwardVector[1] = speed * direction;
+                if (!ui.pressedKeys['KeyA'] && !ui.pressedKeys['KeyD']) {
+                    this.entity.forwardVector[0] = 0;
+                    this.entity.forwardVector[2] = 0;
+                }
+                this.camera.y += this.entity.forwardVector[1];
+            }
+            if (this.camera.z < 1)
+                this.camera.z = 1;
+        }
         this.update = () => {
-            this.entity.getComponent('transform').update();
-            this.entity.getComponent('collider').update();
             if (!playing)
                 return;
             if (!this.entity.getComponent('collider').isColliding) {
                 this.entity.getComponent('transform').update();
-                this.entity.getComponent('transform').setX(camera.x)
-                this.entity.getComponent('transform').setY(camera.y)
+                this.entity.getComponent('transform').setX(this.camera.x)
+                this.entity.getComponent('transform').setY(this.camera.y)
                 this.entity.getComponent('transform').update();
             } else {
-                camera.x = this.entity.getComponent('transform').getX();
-                camera.y = this.entity.getComponent('transform').getY();
+                this.camera.x = this.entity.getComponent('transform').getX();
+                this.camera.y = this.entity.getComponent('transform').getY();
             }
+            this.move();
         }
     }
 }
@@ -286,28 +387,23 @@ class ScriptComponent extends Component {
         this.script = new Script(this.entity);
         this.run = () => { };
         this.update = (ent) => {
-            this.run = this.script.run;
+            this.run = () => { this.script.run(); };
         }
     }
 }
-
 class Player extends Entity {
     constructor(transform, system, name, texCoords = 0, color = [1, 1, 1, 1.0]) {
         super(transform, system);
         this.name = name;
         this.color = color;
         this.texCoord = texCoords;
-        this.forwardVector = [0, 0, 0];
         this.addComponent(new TransformComponent('transform', this));
-        this.addComponent(new CameraComponent('camera', this));
-        this.addComponent(new ColliderComponent('collider', this));
         this.addComponent(new TextureComponent('texture', this));
         this.getTransform = () => {
             return this.getComponent('transform');
         }
     }
 }
-
 class GameObject extends Entity {
     constructor(transform, system, name, texCoord = 0, color = [1, 1, 1, 1.0]) {
         super(transform, system);
@@ -316,5 +412,8 @@ class GameObject extends Entity {
         this.color = color;
         this.addComponent(new TransformComponent('transform', this));
         this.addComponent(new TextureComponent('texture', this));
+    }
+    get getTransform() {
+        return this.getComponent('transform');
     }
 }

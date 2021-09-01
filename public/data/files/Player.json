@@ -1,0 +1,14 @@
+{
+  "ObjectID": "0",
+  "Name": "Player01",
+  "Type": "Player",
+  "Properties": {
+    "AnimationJson": "camel",
+    "Texture": "camel/Untitled.png",
+    "TextureID": 4,
+    "Color": [0, 0, 0, 1],
+    "Transform": [0, 0, 0],
+    "Scale": [1, 1],
+    "DefaultScale": [2, 1]
+  }
+}

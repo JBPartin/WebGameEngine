@@ -105,7 +105,8 @@ class Renderer {
 
             this.indices = [];
             let offset = 0;
-            for (let i = 0; i < 100000; i += 6) {
+            let length = this.sys.entities.length;
+            for (let i = 0; i < Math.max(length, 1); i += 6) {
                 this.indices[i + 0] = 0 + offset;
                 this.indices[i + 1] = 1 + offset;
                 this.indices[i + 2] = 2 + offset;
@@ -125,14 +126,15 @@ class Renderer {
             this.mMatrix = mat4.create();
         }
         this.bind = () => {
+            let viewCamera = activeCamera == -1 ? camera : this.sys.getEntity(activeCamera).getComponent('camera').camera;
             this.gl.useProgram(this.program);
             this.gl.clearColor(.38, .38, .38, 1.0);
             this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
             const vMatrix = mat4.create();
-            mat4.translate(vMatrix, vMatrix, [camera.x, camera.y, camera.z]);
-            mat4.rotate(vMatrix, vMatrix, (camera.yaw * Math.PI / 180), [0, 1, 0]);
-            mat4.rotate(vMatrix, vMatrix, (camera.pitch * Math.PI / 180), [1, 0, 0]);
-            mat4.rotate(vMatrix, vMatrix, (camera.roll * Math.PI / 180), [0, 0, 1]);
+            mat4.translate(vMatrix, vMatrix, [viewCamera.x, viewCamera.y, viewCamera.z]);
+            mat4.rotate(vMatrix, vMatrix, (viewCamera.yaw * Math.PI / 180), [0, 1, 0]);
+            mat4.rotate(vMatrix, vMatrix, (viewCamera.pitch * Math.PI / 180), [1, 0, 0]);
+            mat4.rotate(vMatrix, vMatrix, (viewCamera.roll * Math.PI / 180), [0, 0, 1]);
             mat4.invert(vMatrix, vMatrix);
             this.gl.uniformMatrix4fv(this.programInfo.uniformLocations.modelMatrix, false, this.mMatrix);
             this.gl.uniformMatrix4fv(this.programInfo.uniformLocations.projectionMatrix, false, this.pMatrix);
@@ -163,7 +165,6 @@ window.onload = () => {
         times.push(now);
         frames = times.length;
         fps.innerHTML = `fps: ${frames}`;
-        updateState();
         sys.update();
         renderer.bind();
         requestAnimationFrame(drawScene);

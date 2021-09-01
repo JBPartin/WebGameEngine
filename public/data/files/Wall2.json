@@ -1,0 +1,14 @@
+{
+  "ObjectID": "2",
+  "Name": "Wall-02",
+  "Type": "GameObject",
+  "Properties": {
+    "AnimationJson": "none",
+    "Texture": "none",
+    "TextureID": 0,
+    "Color": [0.5, 0.2, 0.9, 1.0],
+    "Transform": [-5, 0, 0],
+    "Scale": [1, 1],
+    "DefaultScale": [1, 1]
+  }
+}

@@ -56,9 +56,9 @@
           </div>
           <p class="tab-bottom"></p>
           <div id="files">
-            <input type="file" name="filechoice" multiple="multiple" />
-            <% for(var i=0; i < supplies.length; i++) {%> <%-
-            include('./partials/folder.ejs', {supplies, i}) %> <% } %>
+            <!-- <input type="file" name="filechoice" multiple="multiple" /> -->
+            <% for(var i=0; i < files.length; i++) {%> 
+            <%- include('./partials/folder.ejs', {files, i}) %> <% } %>
           </div>
         </div>
       </div>
@@ -73,13 +73,15 @@
     <menu id="ctxMenu">
       <menu title="Create">
         <menu title="Object"></menu>
-        <menu title="Camera"></menu>
-        <menu title="Light"></menu>
       </menu>
     </menu>
     <menu id="ctxMenu2">
       <menu title="Delete"></menu>
       <menu title="Rename"></menu>
+      <menu title="Component">
+        <menu title="Script"></menu>
+        <menu title="Camera"></menu>
+      </menu>
     </menu>
     <input type="text" class="rename-input" id="rename" />
     <script src="scripts/ecs.js"></script>

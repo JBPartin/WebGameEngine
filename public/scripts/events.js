@@ -60,20 +60,13 @@ window.addEventListener('wheel', function (e) {
         return;
     if (!playing) {
         camera.z += e.deltaY / 125 * camera.scrollSpeed;
-        camera.z = camera.z > 100 ? 100 : camera.z;
+        camera.z = Math.max(1, Math.min(camera.z, 100));
         return false;
     }
 }, false);
 window.addEventListener('click', (e) => {
     if (e.target == canvas) {
         canvas.focus();
-    }
-    if (document.activeElement == canvas) {
-        for (let ent of sys.entities) {
-            if (ent.getComponent('script')) {
-                ent.getComponent('script').run();
-            }
-        }
     }
     if (elements.contains(e.target) && elements != e.target) {
         for (let elem of elements.children) {
@@ -94,9 +87,12 @@ window.addEventListener('click', (e) => {
             canvas.focus();
             play.classList.add('isPlaying');
             stop.classList.remove('isPlaying');
-            camera.x = player.getComponent('transform').getX();
-            camera.y = player.getComponent('transform').getY();
-            camera.z = 10;
+            for (ent of sys.entities) {
+                if (ent.getComponent('camera')) {
+                    activeCamera = ent.id;
+                }
+            }
+
             playing = true;
         }
     } else if (e.target == stop) {
@@ -105,6 +101,7 @@ window.addEventListener('click', (e) => {
             stop.classList.add('isPlaying');
             play.classList.remove('isPlaying');
             playing = false;
+            activeCamera = -1;
         }
     }
 });
@@ -139,8 +136,6 @@ window.addEventListener('mouseover', (e) => {
     }
 });
 let objects = 1;
-let cameras = 1;
-let lights = 1;
 window.addEventListener("click", function (e) {
     if (ctxMenu.style.display != 'none') {
         ctxMenu.style.display = 'none';
@@ -148,10 +143,6 @@ window.addEventListener("click", function (e) {
         ctxMenu.style.top = "";
         if (e.target.title == 'Object') {
             new GameObject(new Transform(), sys, `Object-${objects++}`);
-        } else if (e.target.title == 'Camera') {
-            new GameObject(new Transform(), sys, `Camera-${cameras++}`);
-        } else if (e.target.title == 'Light') {
-            new GameObject(new Transform(), sys, `Light-${lights++}`);
         }
         updateInfo();
     } else if (ctxMenu2.style.display != 'none') {
@@ -169,10 +160,21 @@ window.addEventListener("click", function (e) {
             rename.style.display = "block";
             rename.style.left = selectedElem.getBoundingClientRect().x + "px";
             rename.style.top = selectedElem.getBoundingClientRect().y + "px";
-            rename.style.width = selectedElem.getBoundingClientRect().width - 4 + "px";
+            rename.style.width = selectedElem.parentNode.getBoundingClientRect().width - 4 + "px";
             rename.style.height = selectedElem.getBoundingClientRect().height - 2 + "px";
             rename.style.textAlign = 'left';
             rename.focus();
+        } else if (e.target.title == 'Camera') {
+            let ent = sys.getEntity(index);
+            if (!ent.getComponent('camera'))
+                ent.addComponent(new CameraComponent('camera', ent, ui));
+        } else if (e.target.title == 'Script') {
+            let ent = sys.getEntity(index);
+            if (!ent.getComponent('script'))
+                ent.addComponent(new ScriptComponent('script', ent));
+            let selectedInfo = document.getElementById(`${sys.getEntity(index).name}-componenets`);
+            selectedInfo.remove();
+            createComponentDiv(ent).remove();
         }
         updateInfo();
     } else if (rename.style.display != 'none' && e.target != rename) {
@@ -180,6 +182,31 @@ window.addEventListener("click", function (e) {
         rename.style.left = "";
         rename.style.top = "";
         rename.value = '';
+    }
+    if (e.target.classList.contains('files-object')) {
+        if (e.target.classList.contains('selected-file')) {
+            console.log(e.target.id);
+        }
+        for (child of e.target.parentNode.children) {
+            if (child != e.target) {
+                child.classList.remove('selected-file');
+            }
+        }
+        e.target.classList.toggle('selected-file');
+    } else if (e.target.parentNode.classList && e.target.parentNode.classList.contains('files-object')) {
+        if (e.target.parentNode.classList.contains('selected-file')) {
+            getJSON('data/' + e.target.parentNode.id).then(res => console.log(res)).catch(err => console.log(err));
+        }
+        for (child of e.target.parentNode.parentNode.children) {
+            if (child != e.target.parentNode) {
+                child.classList.remove('selected-file');
+            }
+        }
+        e.target.parentNode.classList.toggle('selected-file');
+    } else if (e.target.id === 'files') {
+        for (child of e.target.children) {
+            child.classList.remove('selected-file');
+        }
     }
 }, false);
 rename.addEventListener('change', () => {
@@ -225,6 +252,9 @@ function updateInfo() {
                     div.children[3].value = `${ent.getComponent(comps).getColorAlpha()}`;
                     let colors = ent.getComponent(comps).getColor();
                     div2.children[0].value = (rgbArrayToHex(colors));
+                } else if (comps == 'script') {
+                    let vars = document.getElementById(`${ent.name}-${comps}-script01-vars`);
+                    vars.innerHTML = `${Object.entries(ent.getComponent('script').script.globals).map(values => `<p>${values[0]} : ${values[1]}</p>`).join('')}`;
                 }
             }
         } else {
@@ -393,6 +423,12 @@ function createComponentDiv(ent) {
             div2.appendChild(color);
             div4.appendChild(r);
             div2.appendChild(div4);
+        } else if (comps == 'script') {
+            let vars = document.createElement('div');
+            vars.id = `${ent.name}-${comps}-script01-vars`;
+            div2.innerHTML = 'ScriptName';
+            vars.innerHTML = `${ent.getComponent('script').script.globals}`;
+            div2.appendChild(vars);
         } else {
             container.removeChild(div2);
         }

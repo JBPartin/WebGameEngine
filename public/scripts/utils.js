@@ -10,7 +10,8 @@ const drag = {
     currentY: 0,
     currentX: 0,
 };
-const camera = {
+let activeCamera = -1;
+let camera = {
     x: 0,
     y: 0,
     z: 10,
@@ -30,20 +31,40 @@ canvas.height = canvas.clientHeight;
 /** @type {WebGLRenderingContext} */
 const gl = canvas.getContext('webgl2');
 if (gl === null) { alert("Unable to initialize WebGL."); }
-const player = new Player(new Transform(), sys, 'Player', 4);
-player.addComponent(new SpriteComponent('sprite', player, './images/camel/Untitled.png', './data/camel.json'));
-player.addComponent(new ScriptComponent('script', player));
-player.getComponent('transform').setScale([(200 / 120) * 4, 4, 1]);
+(async () => {
+    let Objects = await fetch('/api/getFiles').then((res) => res.json());
+    for (object of Objects) {
+        if (object.Type === 'GameObject') {
+            let transform = new Transform();
+            transform.setTransform(object.Properties.Transform);
+            transform.setScale([...object.Properties.Scale, 1]);
+            transform.setDefaultScale([...object.Properties.DefaultScale, 1]);
+            new GameObject(transform, sys, object.Name, object.Properties.TextureID, object.Properties.Color);
+        } else if (object.Type === 'Player') {
+            let transform = new Transform();
+            transform.setTransform(object.Properties.Transform);
+            transform.setScale([...object.Properties.Scale, 1]);
+            transform.setDefaultScale([...object.Properties.DefaultScale, 1]);
+            let player = new Player(transform, sys, object.Name, object.Properties.TextureID, object.Properties.Color);
+            player.addComponent(new CameraComponent('camera', player, ui));
+            player.addComponent(new ColliderComponent('collider', player));
+            if (object.Properties.AnimationJson !== 'none' && object.Properties.Texture !== 'none') {
+                player.addComponent(new SpriteComponent('sprite', player, `./images/${object.Properties.Texture}`, `./data/states/${object.Properties.AnimationJson}.json`));
+                player.addComponent(new ScriptComponent('script', player));
+                //Test Script, Dynamic Scripting needs to be added
+                let stateScript = new Script(player);
+                (async () => {
+                    stateScript.run = new Function(await fetch('../data/scripts/ChangeAnimation.js').then(res => res.text()));
+                })().then(() => {
+                    stateScript.run();
+                    player.getComponent('script').script = stateScript;
+                });
+            }
+        }
+    }
+    updateInfo();
+})();
 
-let stateScript = new Script(player);
-stateScript.run = () => {
-    if (stateScript.getSprite().getState() == 0)
-        stateScript.getSprite().setState(1);
-    else if (stateScript.getSprite().getState() == 1)
-        stateScript.getSprite().setState(0);
-}
-
-player.getComponent('script').script = stateScript;
 const renderer = new Renderer(gl, sys);
 renderer.init();
 
@@ -96,7 +117,7 @@ function loadTexture(url, id) {
 
 function hexToRgb(hex) {
     var shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
-    hex = hex.replace(shorthandRegex, function(m, r, g, b) {
+    hex = hex.replace(shorthandRegex, function (m, r, g, b) {
         return r + r + g + g + b + b;
     });
     var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -118,39 +139,6 @@ function rgbArrayToHex(array) {
     return rgbToHex(r, g, b);
 }
 
-function updateState() {
-    if (document.activeElement == canvas)
-        updateInfo();
-    const pitch = (camera.pitch * Math.PI / 180);
-    const yaw = (camera.yaw * Math.PI / 180);
-    const forward = [Math.cos(pitch) * -Math.sin(yaw), Math.sin(pitch), Math.cos(pitch) * -Math.cos(yaw)];
-    const right = crossVec3(forward, [0, -1, 0]);
-    let speed = camera.speed;
-    if (ui.pressedKeys['ShiftLeft']) {
-        speed += 1;
-    }
-    if (ui.pressedKeys['KeyA'] | ui.pressedKeys['KeyD']) {
-        let direction = ui.pressedKeys['KeyA'] ? 1 : -1;
-        player.forwardVector[0] = speed * right[0] * direction;
-        player.forwardVector[2] = speed * right[2] * direction;
-        if (!ui.pressedKeys['KeyW'] && !ui.pressedKeys['KeyS'])
-            player.forwardVector[1] = 0;
-        camera.x += player.forwardVector[0];
-    }
-    if (ui.pressedKeys['KeyW'] | ui.pressedKeys['KeyS']) {
-        let direction = ui.pressedKeys['KeyW'] ? 1 : -1;
-        player.forwardVector[1] = speed * direction;
-        if (!ui.pressedKeys['KeyA'] && !ui.pressedKeys['KeyD']) {
-            player.forwardVector[0] = 0;
-            player.forwardVector[2] = 0;
-        }
-        camera.y += player.forwardVector[1];
-    }
-
-    if (camera.z < 1)
-        camera.z = 1;
-}
-
 function Vertex() {
     this.position = [0, 0, 0];
     this.color = [0, 0, 0, 0];
@@ -158,13 +146,31 @@ function Vertex() {
     this.texId = 0;
 }
 
+function mulVec3(vec1, vec2) {
+    return [vec1[0] * vec2[0], vec1[1] * vec2[1], vec1[2] * vec2[2]];
+}
+
 function Transform() {
     this.translation = [0, 0, 0, 1];
     this.scale = [1, 1, 1]
+    this.normalizedScale = [1, 1, 1];
+    this.getActualScale = () => { return mulVec3(this.scale, this.normalizedScale) };
     this.rotation = 0;
-    this.mat = getTransform(this.translation, this.rotation, this.scale);
+    this.mat = getTransform(this.translation, this.rotation, mulVec3(this.scale, this.normalizedScale));
     this.updateMat = () => {
-        this.mat = getTransform(this.translation, this.rotation, this.scale);
+        this.mat = getTransform(this.translation, this.rotation, mulVec3(this.scale, this.normalizedScale));
+    }
+    this.setTransform = (xyz) => {
+        this.translation[0] = xyz[0]
+        this.translation[1] = xyz[1]
+        this.translation[2] = xyz[2]
+        this.updateMat();
+    }
+    this.setDefaultScale = (xyz) => {
+        this.normalizedScale[0] = xyz[0]
+        this.normalizedScale[1] = xyz[1]
+        this.normalizedScale[2] = xyz[2]
+        this.updateMat();
     }
     this.setX = (x) => {
         this.translation[0] = x;
@@ -182,9 +188,25 @@ function Transform() {
         this.scale = scale;
         this.updateMat();
     }
+    this.setScaleX = (scale) => {
+        this.scale[0] = scale;
+        this.updateMat();
+    }
+    this.setScaleY = (scale) => {
+        this.scale[1] = scale;
+        this.updateMat();
+    }
+    this.setScaleZ = (scale) => {
+        this.scale[2] = scale;
+        this.updateMat();
+    }
     this.setRotation = (r) => {
         this.rotation = r;
         this.updateMat();
+    }
+    this.normalize = () => {
+        this.normalizedScale = addVec3(this.normalizedScale, this.scale);
+        this.scale = [1, 1, 1];
     }
     this.getX = () => {
         return this.translation[0];
@@ -214,8 +236,8 @@ function mulMat3(mat, vec) {
 function getTransform(tran, rad, scale) {
     let mat = glMatrix.mat4.create();
     glMatrix.mat4.translate(mat, mat, tran);
-    glMatrix.mat4.scale(mat, mat, scale);
     glMatrix.mat4.rotateZ(mat, mat, rad * Math.PI / 180);
+    glMatrix.mat4.scale(mat, mat, scale);
     return mat;
 }
 
